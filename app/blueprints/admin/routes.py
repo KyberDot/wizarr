@@ -239,11 +239,15 @@ def invite_table():
     # ------------------------------------------------------------------
     server_filter = request.form.get("server") or request.args.get("server")
 
-    if code := request.args.get("delete"):
-        # Find the invitation to delete
-        invitation = Invitation.query.filter_by(code=code).first()
+    if delete_id := request.args.get("delete"):
+        # Delete by primary key. Deleting by code broke when a code contained a
+        # trailing space: the browser strips it from the query string, so the
+        # exact-match lookup never matched and the invitation became undeletable.
+        invitation = (
+            db.session.get(Invitation, int(delete_id)) if delete_id.isdigit() else None
+        )
         if invitation:
-            # Delete the invitation - CASCADE will handle association table cleanup
+            # CASCADE handles association-table cleanup
             db.session.delete(invitation)
             db.session.commit()
 

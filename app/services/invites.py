@@ -68,7 +68,7 @@ def _get_form_list(form: Any, key: str) -> list[str]:
 def create_invite(form: Any) -> Invitation:
     """Takes a WTForms or dict-like `form` with the same keys as your old version."""
     # generate or validate provided code
-    code = (form.get("code") or _generate_code()).upper()
+    code = (form.get("code") or _generate_code()).strip().upper()
 
     if (
         not (MIN_CODESIZE <= len(code) <= MAX_CODESIZE)
