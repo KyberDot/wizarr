@@ -909,6 +909,22 @@ class PlexClient(MediaClient):
             admin_users, self.server.machineIdentifier
         )
 
+        known_users = self._get_server_users()
+        if not plex_users_by_email and known_users:
+            # We hold users locally but the remote set came back empty. That is far
+            # more likely to be a transient upstream condition or a machineIdentifier
+            # mismatch than the admin genuinely unsharing everyone, and this sync runs
+            # automatically when the Users page loads. Pruning here would delete every
+            # local user (and cascade to their activity sessions) with no confirmation,
+            # so skip the prune. Explicit deletion from the UI is unaffected.
+            logging.warning(
+                "Plex returned no users for server_id=%s but %d are known locally; "
+                "skipping prune to avoid deleting them.",
+                self.server_id,
+                len(known_users),
+            )
+            return known_users
+
         # Remove users no longer in Plex, add new users
         known_emails = set(plex_users_by_email.keys())
         for db_user in self._get_server_users():
