@@ -265,14 +265,10 @@ def invite_table():
         except ValueError:
             server_id = None
         if server_id:
-            # join to association (assuming relationship Invitation.servers)
-            query = Invitation.query.options(
-                db.joinedload(Invitation.libraries).joinedload(Library.server),
-                db.joinedload(Invitation.servers),
-                db.joinedload(
-                    Invitation.users
-                ),  # NEW: Load all users who used this invitation
-            ).order_by(Invitation.created.desc())
+            # Restrict to invitations linked to the selected server. Invitations
+            # can point to multiple servers, so match through the association
+            # table (Invitation.servers) rather than the legacy server_id column.
+            query = query.filter(Invitation.servers.any(MediaServer.id == server_id))
 
             srv = db.session.get(MediaServer, server_id)
             server_type = srv.server_type if srv else None
