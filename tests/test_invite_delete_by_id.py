@@ -54,11 +54,59 @@ def test_delete_invite_with_trailing_space_in_code(client, app, admin_user):
 
     client.post("/login", data={"username": "testadmin", "password": "TestPass123"})
 
-    response = client.post(f"/invite/table?delete={invite_id}")
+    response = client.post(f"/invite/table?delete_id={invite_id}")
     assert response.status_code == 200
 
     with app.app_context():
         assert db.session.get(Invitation, invite_id) is None
+
+
+def test_stale_delete_by_code_param_is_ignored(client, app, admin_user):
+    """A cached ?delete= request (old code-based contract) must not delete a row.
+
+    The delete action moved to an explicit ?delete_id= parameter. Old cached
+    markup can still post ?delete=<code>, where the code may be numeric and
+    collide with an unrelated invitation's id. Such requests must now no-op so
+    they can never delete the wrong invitation.
+    """
+    with app.app_context():
+        invite = Invitation(code="123", used=False, unlimited=False)
+        db.session.add(invite)
+        db.session.commit()
+        invite_id = invite.id
+
+    client.post("/login", data={"username": "testadmin", "password": "TestPass123"})
+
+    # Old contract: ?delete=<numeric code that happens to equal a real id>.
+    response = client.post(f"/invite/table?delete={invite_id}")
+    assert response.status_code == 200
+
+    with app.app_context():
+        # Still present — the legacy parameter no longer deletes anything.
+        assert db.session.get(Invitation, invite_id) is not None
+
+
+@pytest.mark.parametrize("bad_id", ["²", "abc", "9" * 5000, "", "1.5", "-"])
+def test_delete_with_unparseable_id_is_noop_not_500(client, app, admin_user, bad_id):
+    """Non-integer delete_id values must no-op with 200, never raise a 500.
+
+    str.isdigit() accepts values int() rejects ("²"), and digit strings longer
+    than Python's conversion limit raise ValueError. The handler parses in a
+    try/except and treats anything unparseable as a no-op.
+    """
+    with app.app_context():
+        invite = Invitation(code="KEEPME", used=False, unlimited=False)
+        db.session.add(invite)
+        db.session.commit()
+        invite_id = invite.id
+
+    client.post("/login", data={"username": "testadmin", "password": "TestPass123"})
+
+    response = client.post(f"/invite/table?delete_id={bad_id}")
+    assert response.status_code == 200
+
+    with app.app_context():
+        assert db.session.get(Invitation, invite_id) is not None
 
 
 def test_create_invite_strips_whitespace_from_code(app):
