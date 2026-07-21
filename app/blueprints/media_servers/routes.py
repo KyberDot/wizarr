@@ -156,7 +156,7 @@ def create_server():
 def scan_server_libraries(server_id):
     server = MediaServer.query.get_or_404(server_id)
     try:
-        items = scan_libraries_for_server(server)
+        items, authoritative = scan_libraries_for_server(server)
     except Exception as exc:
         error_message = str(exc) if str(exc) else "Library scan failed"
         flash(f"Library scan failed: {exc}", "error")
@@ -169,7 +169,7 @@ def scan_server_libraries(server_id):
     # associations. `enabled` is the admin's saved selection and this scan runs
     # when the edit form OPENS, so resetting it would wipe the checkboxes being
     # rendered.
-    upsert_scanned_libraries(server, items)
+    upsert_scanned_libraries(server, items, authoritative=authoritative)
     db.session.commit()
 
     # Render checkboxes partial (reuse existing partials)

@@ -63,7 +63,7 @@ def test_invite_scan_preserves_disabled_libraries(client, session):
 
     with patch(
         "app.blueprints.admin.routes.scan_libraries_for_server",
-        return_value=SCAN_RESULT,
+        return_value=(SCAN_RESULT, True),
     ):
         resp = client.post(
             "/invite/scan-libraries", data={"server_ids": str(server.id)}
@@ -85,7 +85,7 @@ def test_invite_scan_rendered_checkboxes_match_enabled(client, session):
 
     with patch(
         "app.blueprints.admin.routes.scan_libraries_for_server",
-        return_value=SCAN_RESULT,
+        return_value=(SCAN_RESULT, True),
     ):
         resp = client.post(
             "/invite/scan-libraries", data={"server_ids": str(server.id)}
@@ -104,7 +104,7 @@ def test_server_edit_scan_preserves_disabled_libraries(client, session):
 
     with patch(
         "app.blueprints.media_servers.routes.scan_libraries_for_server",
-        return_value=SCAN_RESULT,
+        return_value=(SCAN_RESULT, True),
     ):
         resp = client.post(f"/settings/servers/{server.id}/scan-libraries")
     assert resp.status_code == 200
@@ -122,7 +122,7 @@ def test_newly_discovered_library_defaults_to_enabled(client, session):
 
     with patch(
         "app.blueprints.admin.routes.scan_libraries_for_server",
-        return_value=SCAN_RESULT,
+        return_value=(SCAN_RESULT, True),
     ):
         client.post("/invite/scan-libraries", data={"server_ids": str(server.id)})
 
@@ -131,10 +131,13 @@ def test_newly_discovered_library_defaults_to_enabled(client, session):
     assert enabled["3"] is True
 
 
-def test_partial_scan_leaves_existing_libraries_untouched(client, session):
-    """A flaky plex.tv scan that returns fewer libraries than we hold must not disable
-    or delete the missing ones. Regression: a 12-library server came back as a
-    7-library scan and silently dropped Movies/TV Shows out of the invite default.
+def test_non_authoritative_scan_leaves_existing_libraries_untouched(client, session):
+    """A scan the client flags as unreliable must not disable or delete libraries
+    missing from it, however many it returned. Regression: a 12-library server
+    came back as a 7-library scan and silently dropped Movies/TV Shows out of the
+    invite default. Reliability is a signal from the client
+    (``libraries_scan_authoritative``), not a guess based on counts: a same-size
+    scan is just as capable of having silently swapped in a different library.
     """
     _login(client, session)
     server = _server(session)
@@ -149,11 +152,11 @@ def test_partial_scan_leaves_existing_libraries_untouched(client, session):
         },
     )
 
-    # scan comes back short (2 of 4), omitting the enabled Movies/TV Shows
+    # scan comes back short (2 of 4) and the client marks it unreliable
     partial = {"3": "Home Video", "4": "Music"}
     with patch(
         "app.blueprints.admin.routes.scan_libraries_for_server",
-        return_value=partial,
+        return_value=(partial, False),
     ):
         resp = client.post(
             "/invite/scan-libraries", data={"server_ids": str(server.id)}
@@ -164,6 +167,53 @@ def test_partial_scan_leaves_existing_libraries_untouched(client, session):
     assert _enabled_map(server.id) == {"1": True, "2": True, "3": False, "4": False}
 
 
+def test_equal_count_non_authoritative_scan_does_not_swap_libraries(client, session):
+    """Count alone never proves a scan is complete: an unreliable scan that comes
+    back the same size as what we hold, but with different libraries, must still
+    leave the missing one alone rather than treating the matching count as proof
+    it's a real replacement.
+    """
+    _login(client, session)
+    server = _server(session)
+    _libs(session, server, {"1": ("Movies", True), "2": ("TV Shows", True)})
+
+    # same count (2) as what we hold, but "1" is gone and "3" is new
+    swapped = {"2": "TV Shows", "3": "Documentaries"}
+    with patch(
+        "app.blueprints.admin.routes.scan_libraries_for_server",
+        return_value=(swapped, False),
+    ):
+        resp = client.post(
+            "/invite/scan-libraries", data={"server_ids": str(server.id)}
+        )
+    assert resp.status_code == 200
+
+    # "1" survives (unreliable scan), "3" is still added (adds always apply)
+    assert _enabled_map(server.id) == {"1": True, "2": True, "3": True}
+
+
+def test_authoritative_scan_reconciles_a_genuine_removal(client, session):
+    """A scan the client confirms is reliable must still reconcile removals, even
+    though it returns fewer libraries than we hold - a real removal isn't
+    distinguishable from a partial one by count and must not be blocked forever.
+    """
+    _login(client, session)
+    server = _server(session)
+    _libs(session, server, {"1": ("Movies", True), "2": ("TV Shows", True)})
+
+    with patch(
+        "app.blueprints.admin.routes.scan_libraries_for_server",
+        return_value=({"2": "TV Shows"}, True),
+    ):
+        resp = client.post(
+            "/invite/scan-libraries", data={"server_ids": str(server.id)}
+        )
+    assert resp.status_code == 200
+
+    # "1" is gone for good, not disabled-and-kept, since nothing references it
+    assert _enabled_map(server.id) == {"2": True}
+
+
 def test_empty_scan_is_a_noop(client, session):
     """An empty scan result (total plex.tv failure) must not wipe the library table."""
     _login(client, session)
@@ -172,7 +222,7 @@ def test_empty_scan_is_a_noop(client, session):
 
     with patch(
         "app.blueprints.admin.routes.scan_libraries_for_server",
-        return_value={},
+        return_value=({}, False),
     ):
         resp = client.post(
             "/invite/scan-libraries", data={"server_ids": str(server.id)}
@@ -180,6 +230,33 @@ def test_empty_scan_is_a_noop(client, session):
     assert resp.status_code == 200
 
     assert _enabled_map(server.id) == {"1": True, "3": False}
+
+
+def test_malformed_scan_result_does_not_abort_other_servers(client, session):
+    """A malformed scan result (e.g. ``None``) for one server must not raise out
+    of the reconciliation loop and discard already-processed servers in the same
+    multi-server scan request.
+    """
+    _login(client, session)
+    bad_server = _server(session, name="Bad")
+    good_server = _server(session, name="Good")
+
+    def fake_scan(server):
+        if server.id == bad_server.id:
+            return None, True
+        return SCAN_RESULT, True
+
+    with patch(
+        "app.blueprints.admin.routes.scan_libraries_for_server",
+        side_effect=fake_scan,
+    ):
+        resp = client.post(
+            "/invite/scan-libraries",
+            data={"server_ids": [str(bad_server.id), str(good_server.id)]},
+        )
+    assert resp.status_code == 200
+
+    assert _enabled_map(good_server.id) == {"1": True, "2": True, "3": True}
 
 
 def test_legacy_settings_scan_does_not_delete_other_servers_libraries(client, session):

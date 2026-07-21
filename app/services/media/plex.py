@@ -132,6 +132,24 @@ class PlexClient(MediaClient):
         # Return {global_id: name} so external_id stores the global ID
         return {str(global_id): name for name, global_id in library_map.items()}
 
+    def libraries_scan_authoritative(self, scan_result: dict[str, str]) -> bool:
+        """Cross-check the global-id lookup's count against the local server.
+
+        `libraries()` gets its global section IDs from `plex.tv/api/v2/servers`,
+        an account-level endpoint that can transiently return a partial or empty
+        `librarySections` list from a perfectly healthy server without raising.
+        The local server's own `library.sections()` talks to the Plex Media
+        Server directly and isn't subject to that flakiness, so it's a genuine
+        second source rather than a guess based on what we already have on file.
+        A count mismatch means the global-id result can't be trusted to tell us
+        a library was actually removed.
+        """
+        try:
+            true_count = len(self.server.library.sections())
+        except Exception:
+            return False
+        return len(scan_result) == true_count
+
     # ─── Helper Methods ────────────────────────────────────────────────────────
 
     def _get_server_users(self) -> list[User]:

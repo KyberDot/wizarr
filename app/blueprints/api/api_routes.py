@@ -867,7 +867,7 @@ class LibrariesResource(Resource):
                         logger.info(f"Scanning libraries for server {server.name}")
                         from app.services.media.service import scan_libraries_for_server
 
-                        library_data = scan_libraries_for_server(server)
+                        library_data, _ = scan_libraries_for_server(server)
 
                         # Create Library records for each scanned library
                         for external_id, name in library_data.items():

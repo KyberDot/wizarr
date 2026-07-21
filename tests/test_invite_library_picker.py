@@ -99,7 +99,7 @@ def test_invite_scan_libraries_renders_existing_choices_without_duplicate_ids(
 
     with patch(
         "app.blueprints.admin.routes.scan_libraries_for_server",
-        return_value=scanned_libraries,
+        return_value=(scanned_libraries, True),
     ):
         response = client.post(
             "/invite/scan-libraries",

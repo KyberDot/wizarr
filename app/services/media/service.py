@@ -281,13 +281,23 @@ def scan_libraries(
     return client.libraries()
 
 
-def scan_libraries_for_server(server: MediaServer):
-    """Scan libraries for the given server and upsert into our Library table."""
+def scan_libraries_for_server(server: MediaServer) -> tuple[Any, bool]:
+    """Scan libraries for the given server and upsert into our Library table.
+
+    Returns ``(scan_result, authoritative)``. ``authoritative`` reports whether
+    ``scan_result`` can be trusted to reconcile libraries that are missing from
+    it as actually removed - see ``MediaClient.libraries_scan_authoritative``
+    and ``upsert_scanned_libraries``. Callers that only add/update and never
+    reconcile removals (e.g. the API library listing) can ignore it.
+    """
     client = get_client_for_media_server(server)
-    return client.libraries()
+    scan_result = client.libraries()
+    return scan_result, client.libraries_scan_authoritative(scan_result)
 
 
-def upsert_scanned_libraries(server: MediaServer, scan_result: Any) -> None:
+def upsert_scanned_libraries(
+    server: MediaServer, scan_result: Any, *, authoritative: bool = True
+) -> None:
     """Reconcile a server's Library rows with a scan result. Does not commit.
 
     ``scan_result`` is either a ``{external_id: name}`` dict or a list of names.
@@ -295,25 +305,34 @@ def upsert_scanned_libraries(server: MediaServer, scan_result: Any) -> None:
     their ``enabled`` flag, which is the admin's saved default and what the
     checkbox partial renders from. New libraries are inserted enabled. A library
     that vanished from the scan is disabled if any invitation still references it,
-    otherwise deleted, but only when the scan is authoritative.
+    otherwise deleted, but only when ``authoritative`` is true.
 
-    Removal reconciliation is skipped when the scan returns nothing, or fewer
-    libraries than we already have on record. Plex's global-id source
-    (``plex.tv/api/v2/servers``) can transiently return a partial or empty
-    ``librarySections`` list, and trusting a short response would disable real
-    libraries and wipe the admin's saved invite defaults. Adds and name updates
-    still apply, so genuinely new libraries always show up.
+    ``authoritative`` (see ``scan_libraries_for_server``) is the caller's signal
+    that ``scan_result`` genuinely reflects the server's current libraries, not
+    a guess based on counts alone: a same-size scan can still have silently
+    swapped in a different library, and a real removal must not be blocked
+    forever just because it shrinks the count. When it's false, removal
+    reconciliation is skipped entirely; adds and name updates still apply, so
+    genuinely new libraries always show up.
+
+    A malformed ``scan_result`` (e.g. ``None``) is treated the same as an empty
+    one rather than raising, so a bad result from one server in a multi-server
+    scan can't abort reconciliation already done for earlier servers in the
+    same request.
 
     Shared by the invite modal scan and the server edit-form scan; each caller
     keeps its own handling of a failed scan and its own commit/flush.
     """
     from app.models import Library, invite_libraries
 
-    pairs = (
-        scan_result.items()
-        if isinstance(scan_result, dict)
-        else [(name, name) for name in scan_result]
-    )
+    try:
+        pairs = list(
+            scan_result.items()
+            if isinstance(scan_result, dict)
+            else [(name, name) for name in scan_result]
+        )
+    except TypeError:
+        pairs = []
 
     # A scan that returns nothing must not mutate anything: Plex's global-id source
     # can transiently return an empty librarySections list, and trusting it would
@@ -342,12 +361,7 @@ def upsert_scanned_libraries(server: MediaServer, scan_result: Any) -> None:
                 )
             )
 
-    # Only reconcile removals when the scan is authoritative. A scan that returns
-    # fewer libraries than we already have on record is treated as a partial (flaky)
-    # response and leaves existing rows untouched. This is the reported failure mode:
-    # a 12-library Plex came back as a 7-library scan and silently disabled the two
-    # libraries (Movies and TV Shows) the admin had kept as the invite default.
-    if len(incoming_ids) < len(existing_libs):
+    if not authoritative:
         return
 
     for ext, lib in existing_libs.items():

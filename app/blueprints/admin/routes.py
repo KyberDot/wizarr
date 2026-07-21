@@ -775,14 +775,14 @@ def invite_scan_libraries():
 
     for server in servers:
         try:
-            raw = scan_libraries_for_server(server)
+            raw, authoritative = scan_libraries_for_server(server)
         except Exception as exc:
             logging.warning("Library scan failed for %s: %s", server.name, exc)
-            raw = []
+            raw, authoritative = [], False
 
         # Upsert scanned libraries, preserving each row's enabled flag (the admin's
         # saved default, rendered by the checkbox partial) and invite associations.
-        upsert_scanned_libraries(server, raw)
+        upsert_scanned_libraries(server, raw, authoritative=authoritative)
 
         # Flush so the temporary changes are visible for listing
         db.session.flush()

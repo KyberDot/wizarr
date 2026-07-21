@@ -192,6 +192,18 @@ class MediaClient(ABC):
     def libraries(self):
         raise NotImplementedError
 
+    def libraries_scan_authoritative(self, scan_result) -> bool:  # noqa: ARG002
+        """Whether `scan_result` (this call's `libraries()` return value) can be
+        trusted to reconcile libraries that are missing from it as removed.
+
+        Default True: most backends are queried directly, so a result either
+        reflects the server's real state or the request raised and never got
+        here. Override this only if a backend's scan source can silently
+        return a partial view of a healthy server without raising - see
+        PlexClient, whose account-level global-id lookup does exactly that.
+        """
+        return True
+
     @abstractmethod
     def create_user(self, *args, **kwargs):
         raise NotImplementedError
