@@ -661,7 +661,12 @@ class JellyfinClient(RestApiMixin):
         """Get movie poster URLs for background display."""
         poster_urls = []
         try:
-            # Get recent movies from all libraries
+            # Get recent movies from all libraries. Recursive is required: without
+            # it /Items only returns the library folders at the root, so this came
+            # back empty and the cinema background silently showed nothing. Safe to
+            # enable now only because the poster URLs below go through the image
+            # proxy; enabling it while the raw api_key URL was returned would have
+            # turned the latent /cinema-posters leak into an active one.
             response = self.get(
                 "/Items",
                 params={
@@ -671,6 +676,7 @@ class JellyfinClient(RestApiMixin):
                     "Limit": limit * 2,  # Get more than needed as fallback
                     "Fields": "PrimaryImageAspectRatio",
                     "HasPrimaryImage": True,
+                    "Recursive": True,
                 },
             ).json()
 
@@ -681,11 +687,13 @@ class JellyfinClient(RestApiMixin):
 
                     item_id = item.get("Id")
                     if item_id:
-                        # Build poster URL
+                        # Build the poster URL and route it through the image
+                        # proxy. The api_key is deliberately kept out of the URL;
+                        # the proxy re-attaches it as a header server-side (see
+                        # ImageProxyService.get_server_headers), so the admin
+                        # token is never exposed to the client.
                         poster_url = f"{self.url}/Items/{item_id}/Images/Primary"
-                        if self.token:
-                            poster_url += f"?api_key={self.token}"
-                        poster_urls.append(poster_url)
+                        poster_urls.append(self.generate_image_proxy_url(poster_url))
 
         except Exception as e:
             import logging
