@@ -265,10 +265,22 @@ def invite_table():
         except ValueError:
             server_id = None
         if server_id:
-            # Restrict to invitations linked to the selected server. Invitations
-            # can point to multiple servers, so match through the association
-            # table (Invitation.servers) rather than the legacy server_id column.
-            query = query.filter(Invitation.servers.any(MediaServer.id == server_id))
+            # Restrict to invitations linked to the selected server. Multi-server
+            # invites match through the association table (Invitation.servers).
+            # Legacy single-server invites have no association rows and carry the
+            # server on Invitation.server_id; the rest of the app treats those as
+            # `servers or [server]`, so include them here too — but only when they
+            # have no association rows, so a stale legacy server_id can't broaden a
+            # genuine multi-server invite.
+            query = query.filter(
+                db.or_(
+                    Invitation.servers.any(MediaServer.id == server_id),
+                    db.and_(
+                        ~Invitation.servers.any(),
+                        Invitation.server_id == server_id,
+                    ),
+                )
+            )
 
             srv = db.session.get(MediaServer, server_id)
             server_type = srv.server_type if srv else None

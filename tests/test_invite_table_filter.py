@@ -68,3 +68,78 @@ def test_invite_table_filters_by_server(client, app, admin_user):
     body = response.data.decode("utf-8")
     assert "ONSERVERA" in body
     assert "ONSERVERB" not in body
+
+
+def test_invite_table_filter_includes_legacy_single_server_invite(
+    client, app, admin_user
+):
+    """Legacy invites (server_id set, no association rows) still filter correctly.
+
+    Older invitations predate the invitation_server association table and carry
+    their server only on Invitation.server_id. The rest of the app treats such an
+    invite as belonging to `invitation.server`, so the filter must surface it for
+    that server and hide it for others.
+    """
+    with app.app_context():
+        srv_a = MediaServer(
+            name="Legacy A", server_type="plex", url="http://la", api_key="kla"
+        )
+        srv_b = MediaServer(
+            name="Legacy B", server_type="jellyfin", url="http://lb", api_key="klb"
+        )
+        db.session.add_all([srv_a, srv_b])
+        db.session.commit()
+
+        # Legacy shape: server assigned via the single-server relationship only,
+        # with no invitation_server association rows.
+        legacy = Invitation(code="LEGACYONA", used=False, unlimited=False, server=srv_a)
+        db.session.add(legacy)
+        db.session.commit()
+        a_id, b_id = srv_a.id, srv_b.id
+
+    client.post("/login", data={"username": "testadmin", "password": "TestPass123"})
+
+    shown = client.post("/invite/table", data={"server": str(a_id)})
+    assert shown.status_code == 200
+    assert "LEGACYONA" in shown.data.decode("utf-8")
+
+    hidden = client.post("/invite/table", data={"server": str(b_id)})
+    assert hidden.status_code == 200
+    assert "LEGACYONA" not in hidden.data.decode("utf-8")
+
+
+def test_invite_table_filter_ignores_stale_legacy_server_id(client, app, admin_user):
+    """A stale server_id must not broaden a genuine multi-server invite.
+
+    An invite may carry both association rows (the authoritative multi-server
+    truth) and a leftover legacy server_id pointing elsewhere. The legacy match
+    must apply only when there are no association rows, so the stale id cannot
+    make the invite appear under a server it is not actually linked to.
+    """
+    with app.app_context():
+        srv_a = MediaServer(
+            name="Stale A", server_type="plex", url="http://sa", api_key="ksa"
+        )
+        srv_b = MediaServer(
+            name="Stale B", server_type="jellyfin", url="http://sb", api_key="ksb"
+        )
+        db.session.add_all([srv_a, srv_b])
+        db.session.commit()
+
+        # Linked to A via the association table, but with a stale legacy server_id
+        # still pointing at B.
+        inv = Invitation(code="STALEBID", used=False, unlimited=False, server=srv_b)
+        inv.servers.append(srv_a)
+        db.session.add(inv)
+        db.session.commit()
+        a_id, b_id = srv_a.id, srv_b.id
+
+    client.post("/login", data={"username": "testadmin", "password": "TestPass123"})
+
+    on_a = client.post("/invite/table", data={"server": str(a_id)})
+    assert on_a.status_code == 200
+    assert "STALEBID" in on_a.data.decode("utf-8")
+
+    on_b = client.post("/invite/table", data={"server": str(b_id)})
+    assert on_b.status_code == 200
+    assert "STALEBID" not in on_b.data.decode("utf-8")
