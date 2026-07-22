@@ -430,8 +430,12 @@ class JellyfinClient(RestApiMixin):
 
         jf_users_by_id = {u["Id"]: u for u in raw_users}
 
+        known_users = self._get_server_users()
+        if self._skip_prune_on_empty_remote(not jf_users_by_id, known_users):
+            return known_users
+
         # Remove users no longer in Jellyfin, add new users
-        for db_user in self._get_server_users():
+        for db_user in known_users:
             if db_user.token not in jf_users_by_id:
                 db.session.delete(db_user)
 
