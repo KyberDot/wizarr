@@ -7,7 +7,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: PROJECT VERSION\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2026-07-21 06:05+0000\n"
+"POT-Creation-Date: 2026-07-22 06:04+0000\n"
 "PO-Revision-Date: 2026-06-10 07:16+0000\n"
 "Last-Translator: wanyuxi88 <wanyuxi@163.com>\n"
 "Language-Team: Chinese (Simplified Han script) <https://hosted.weblate.org/"
@@ -862,6 +862,15 @@ msgstr "加入服务器"
 
 msgid "Secure invitation system powered by Wizarr"
 msgstr "由Wizarr提供支持的安全邀请系统"
+
+msgid "Pop-up blocked. Allow pop-ups for this site and try again."
+msgstr ""
+
+msgid "Sign-in cancelled. Hit Join Server to try again."
+msgstr ""
+
+msgid "Plex sign-in failed. Try again, or contact your server admin."
+msgstr ""
 
 msgid "Invite User"
 msgstr "邀请用户"

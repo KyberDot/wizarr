@@ -7,7 +7,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: PROJECT VERSION\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2026-07-21 06:05+0000\n"
+"POT-Creation-Date: 2026-07-22 06:04+0000\n"
 "PO-Revision-Date: 2026-07-13 06:29+0000\n"
 "Last-Translator: Václav Štěpáník <stepanikvaclav@gmail.com>\n"
 "Language-Team: Czech <https://hosted.weblate.org/projects/wizarr/wizarr-"
@@ -893,6 +893,15 @@ msgstr "Připojit se k serveru"
 
 msgid "Secure invitation system powered by Wizarr"
 msgstr "Bezpečný systém zasílání pozvánek založený na platformě Wizarr"
+
+msgid "Pop-up blocked. Allow pop-ups for this site and try again."
+msgstr ""
+
+msgid "Sign-in cancelled. Hit Join Server to try again."
+msgstr ""
+
+msgid "Plex sign-in failed. Try again, or contact your server admin."
+msgstr ""
 
 msgid "Invite User"
 msgstr "Pozvat uživatele"

@@ -7,7 +7,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: PROJECT VERSION\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2026-07-21 06:05+0000\n"
+"POT-Creation-Date: 2026-07-22 06:04+0000\n"
 "PO-Revision-Date: 2026-07-07 06:55+0000\n"
 "Last-Translator: LvanAlphen <iggnition@users.noreply.hosted.weblate.org>\n"
 "Language-Team: Dutch <https://hosted.weblate.org/projects/wizarr/wizarr-"
@@ -919,6 +919,15 @@ msgstr "Deelnemen Server"
 
 msgid "Secure invitation system powered by Wizarr"
 msgstr "Veilig uitnodigingssysteem aangestuurd door Wizarr"
+
+msgid "Pop-up blocked. Allow pop-ups for this site and try again."
+msgstr ""
+
+msgid "Sign-in cancelled. Hit Join Server to try again."
+msgstr ""
+
+msgid "Plex sign-in failed. Try again, or contact your server admin."
+msgstr ""
 
 msgid "Invite User"
 msgstr "Gebruiker uitnodigen"
